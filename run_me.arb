@@ -11,7 +11,7 @@ client.auto_paginate = true
 #puts "requests left #{client.rate_limit!}"
 
 #get all PRs
-prs = client.pull_requests(repo).take(1)
+prs = client.pull_requests(repo)#.take(1)
 
 #get commits for every PR
 prs_with_commits = {}
