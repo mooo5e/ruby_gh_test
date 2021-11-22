@@ -1,0 +1,65 @@
+require 'octokit'
+require "yaml"
+
+token = YAML.load_file("config")
+repo = 'rails/rails'
+wanted_pull_requests = []
+
+
+client = Octokit::Client.new(:access_token => token)
+client.auto_paginate = true
+#puts "requests left #{client.rate_limit!}"
+
+#get all PRs
+prs = client.pull_requests(repo).take(1)
+
+#get commits for every PR
+prs_with_commits = {}
+prs.each do |pr|
+    prs_with_commits[pr.number.to_s] = client.pull_request_commits(repo, pr.number.to_s)
+end
+
+#PRs that have more than one commit
+multiple_commits_prs = {}
+commits_urls = {}
+total_commits = 0
+prs_with_commits.each_key do |pr|
+    prs_commits = prs_with_commits[pr].count
+    total_commits += prs_commits
+    if prs_commits > 1
+        multiple_commits_prs[pr] = []
+        prs_with_commits[pr].each do |commit|
+            multiple_commits_prs[pr].push(commit.sha)
+            commits_urls[commit.sha] = commit.html_url
+        end
+    end
+end
+
+puts "#{repo} has #{total_commits} commits in #{prs.count} pull requests." 
+puts
+
+multiple_commits_prs.each_key do |pr|
+    affected_files = {}
+    multiple_commits_prs[pr].each do |commit_sha|
+        commit_info = client.commit(repo, commit_sha)
+        commit_info.files.map{ |f| affected_files[f.filename] ? affected_files[f.filename] << commit_sha : (affected_files[f.filename] = [commit_sha] )}
+    end
+    affected_files.each_key do |filename|
+        if affected_files[filename].count > 1
+            wanted_pull_requests |= [pr]
+            puts "File #{filename} is modified by more than one commit in PR ##{pr}!"
+            puts "Commits info:"
+            affected_files[filename].each do |commit_hash| 
+                puts "commit #{commit_hash} (#{commits_urls[commit_hash]})"
+            end
+            puts "_____________________________________________________"
+        end
+    end
+end
+
+puts
+puts "Full list of found pull requests: [#{wanted_pull_requests.count} total]"
+puts wanted_pull_requests
+
+# puts
+# puts "requests left #{client.rate_limit!}"
